@@ -105,6 +105,9 @@ class VideoPlayerProcessor {
     this.state.wasLaunched = false;
     this.state.complete = false;
     this.minimizedPlayerWrapper = null;
+    this.playPromise = null;
+    this.isPlayingOperation = false;
+    this.scrollTimeout = null;
 
     this.config = {
       showMinimizedPlayer:
@@ -198,17 +201,17 @@ class VideoPlayerProcessor {
     this.eventTrigger("impression");
     this.eventTrigger("start");
 
-    if (this.videoData.player) {
+    const player = this.getCurrentVideoPlayerElement();
+    if (player) {
       this.syncTimeFromMinimizedPlayer();
-
-      this.videoData.player.play().catch((error) => {
-        console.log("Autoplay blocked or failed:", error);
-      });
+      this.safePlay(player);
     }
 
-    this.videoData.player.addEventListener("timeupdate", () => {
-      this.processPosition(this.videoData.player.currentTime);
-    });
+    if (player) {
+      player.addEventListener("timeupdate", () => {
+        this.processPosition(player.currentTime);
+      });
+    }
   };
 
   delayedEventInit = () => {
@@ -239,44 +242,83 @@ class VideoPlayerProcessor {
     }
   }
 
-  checkAndStartVideoIfVisible = () => {
-    if (!this.videoData.player || !this.state.playerReady) {
+  safePlay = async (player) => {
+    if (!player || typeof player.play !== "function") {
       return;
     }
 
-    let isVisible = this.elementIsVisibleInViewport(
-      this.getCurrentVideoPlayerElement(),
-      false
-    );
+    if (this.playPromise) {
+      try {
+        await this.playPromise;
+      } catch (e) {}
+    }
+
+    if (this.isPlayingOperation) {
+      return;
+    }
+
+    this.isPlayingOperation = true;
+    this.playPromise = player
+      .play()
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          console.log("Play failed:", error);
+        }
+        return null;
+      })
+      .finally(() => {
+        this.isPlayingOperation = false;
+        this.playPromise = null;
+      });
+
+    return this.playPromise;
+  };
+
+  checkAndStartVideoIfVisible = () => {
+    if (!this.state.playerReady) {
+      return;
+    }
+
+    const player = this.getCurrentVideoPlayerElement();
+    if (!player || typeof player.play !== "function") {
+      return;
+    }
+
+    let isVisible = this.elementIsVisibleInViewport(player, false);
 
     if (isVisible) {
       this.syncTimeFromMinimizedPlayer();
-
-      this.videoData.player.play().catch((error) => {
-        console.log("Autoplay blocked or failed:", error);
-      });
+      this.safePlay(player);
     }
   };
 
   togglePlayOnViewPortVisibility = () => {
-    if (!this.videoData.player || this.videoData.player === undefined) {
-      return;
+    if (this.scrollTimeout) {
+      clearTimeout(this.scrollTimeout);
     }
 
-    let isVisible = this.elementIsVisibleInViewport(
-      this.getCurrentVideoPlayerElement(),
-      false
-    );
+    this.scrollTimeout = setTimeout(() => {
+      const player = this.getCurrentVideoPlayerElement();
+      if (!player) {
+        return;
+      }
 
-    if (!isVisible) {
-      this.videoData.player.pause();
-    } else {
-      this.syncTimeFromMinimizedPlayer();
+      let isVisible = this.elementIsVisibleInViewport(player, false);
 
-      this.videoData.player.play().catch((error) => {
-        console.log("Play failed:", error);
-      });
-    }
+      if (!isVisible) {
+        if (this.playPromise) {
+          this.playPromise = null;
+        }
+        this.isPlayingOperation = false;
+
+        if (typeof player.pause === "function") {
+          player.pause();
+        }
+      } else {
+        this.syncTimeFromMinimizedPlayer();
+        this.safePlay(player);
+      }
+    }, 100);
   };
 
   addKeyframes(ctaSlide, duration, startPosition) {
