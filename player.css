@@ -1,0 +1,644 @@
+.fade-in {
+  opacity: 0;
+  transition: opacity 100ms ease-in;
+}
+
+.fade-in.show {
+  opacity: 1;
+}
+
+svg .hidden {
+  display: none;
+}
+
+.video-wrapper {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.preview {
+  margin: auto;
+}
+
+video-player {
+  display: block;
+}
+
+.overlay {
+  display: inline-block;
+}
+
+.cta-button {
+  margin-top: 15px;
+  padding: 0;
+}
+
+/* Button styling */
+.cta-btn {
+  box-sizing: content-box;
+}
+
+/* Anchor link */
+.overlay a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Label */
+.overlay label {
+  display: block;
+  font-weight: bold;
+}
+
+.video-wrapper video-player {
+  width: 100%;
+  /* Hide the error dialog */
+  --dialog: none;
+  /* Hide the loading indicator */
+  --loading-indicator: none;
+  /* Target all sections by excluding the section prefix */
+  --center-controls: none;
+  --play-button: none;
+  --live-button: none;
+  --seek-backward-button: none;
+  --seek-forward-button: none;
+  --captions-button: none;
+  --airplay-button: none;
+  --pip-button: none;
+  --cast-button: none;
+  --playback-rate-button: none;
+  --time-range: none;
+  --time-display: "true";
+  --duration-display: none;
+  --rendition-selectmenu: none;
+  --mute-button: true;
+}
+
+.mute-icon {
+  margin: 3px;
+  height: 35px;
+  width: 35px;
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: block;
+  fill: white;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.video-wrapper .overlay {
+  color: #000000; /* Accent color */
+  display: flex;
+  font-family: Arial, Helvetica, sans-serif;
+  height: 89%;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+}
+
+.control-area {
+  height: 11%;
+  position: absolute;
+  bottom: 0;
+}
+
+.video-wrapper .overlay div.cta {
+  background-color: rgba(255, 255, 255, 0.7);
+  border-radius: 2px 0 0 2px;
+  margin-top: 5px;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+}
+
+.video-wrapper .overlay a {
+  text-decoration: none;
+}
+
+.tagline-text {
+  margin: 0 10px;
+}
+
+.cta-area-hover {
+  z-index: 2;
+  height: 80%;
+  width: 100%;
+  font-family: "Roboto", sans-serif;
+  padding-top: 5px;
+  margin: auto;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cta-area-hover-logo {
+  aspect-ratio: 1 / 1;
+  height: 50%;
+  border-radius: 50%;
+  background-color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cta-area-hover-logo .logo {
+  width: 65%;
+  max-height: 65%;
+  height: auto;
+}
+
+a.overlay,
+a.overlay:hover,
+a.overlay:focus {
+  text-decoration: none;
+}
+
+.cta-area-hover .cta-content {
+  align-content: center;
+  text-decoration: none;
+  text-align: center;
+  margin-top: 5px;
+  max-width: 80%;
+}
+
+.cta-area-hover .cta-content strong {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+}
+
+.cta-area-hover .cta-button {
+  margin-top: 5px;
+  padding: 0;
+}
+
+.cta-area-hover .cta-button .cta-btn {
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.cta-area-hover .cta-content strong {
+  font-family: "Roboto", sans-serif;
+  text-decoration: none;
+  font-size: 1.5em;
+  color: white;
+}
+
+.cta-area-hover .cta-content p {
+  font-family: "Roboto", sans-serif;
+  margin: 0;
+  color: white;
+}
+
+.cta-slide .bullet:nth-child(1) {
+  margin-left: 5px;
+}
+
+.cta-slide {
+  color: #888;
+  font-size: 12px;
+  display: flex;
+  position: absolute;
+}
+
+/* CTA */
+.cta {
+  display: flex;
+  padding: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: "Roboto", sans-serif;
+}
+
+.cta.cta-slide-wrapper {
+  position: relative;
+  flex-direction: column;
+}
+
+.cta .cta-content {
+  white-space: normal;
+}
+
+.cta .cta-content p {
+  font-family: "Roboto", sans-serif;
+  line-height: 14px;
+  font-size: 10px;
+  margin: 0;
+}
+
+.cta .cta-content strong {
+  font-family: "Roboto", sans-serif;
+  font-size: 12px;
+  line-height: 15px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+
+.cta.below-video {
+  height: 100%;
+  margin-top: 7px;
+  border-radius: 2px;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.2);
+  padding: 5px;
+  flex-wrap: wrap;
+  overflow: hidden;
+  position: relative;
+}
+
+.cta .logo {
+  margin: 3px;
+  display: block;
+  width: 30px;
+  height: 30px;
+}
+
+.cta .logo img {
+  height: inherit;
+}
+
+.cta.below-video .logo {
+  margin: 0;
+  display: block;
+  height: 100%;
+}
+
+.cta .cta-content {
+  margin: 0 3px;
+  text-align: left;
+}
+
+.cta.bottom-left {
+  left: 0;
+  bottom: 0;
+  position: absolute;
+  border-radius: 0 2px 2px 0;
+}
+
+/* CTA-AREA */
+.cta-area {
+  cursor: pointer;
+  border: 0;
+  display: flex;
+  justify-content: end;
+  align-items: flex-start;
+  height: 90%;
+  width: 100%;
+  max-width: 80%;
+  position: absolute;
+  right: 0;
+}
+
+.cta-area.bottom-left {
+  left: 0;
+  bottom: 0;
+}
+
+.cta-area.below-video {
+  display: none;
+}
+
+.cta-area .cta-content {
+  white-space: normal;
+  margin-left: 8px;
+}
+
+.cta-area .cta-content p {
+  white-space: normal;
+  margin: 0;
+}
+
+.buttonWrapper .cta-button {
+  box-sizing: content-box;
+  margin: 3px;
+  align-self: center;
+  padding: 0;
+  text-align: left;
+  border-radius: 1px;
+  display: flex;
+  justify-content: right;
+  align-items: center;
+  height: 50px;
+}
+
+.buttonWrapper .cta-button .cta-btn {
+  box-sizing: content-box;
+  font-size: 15px;
+  font-weight: normal;
+  padding: 10px;
+  border: 0;
+  border-radius: 3px;
+  text-decoration: none;
+  font-family: "Roboto", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+}
+
+.tagline-bar {
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.2);
+}
+
+.cta-area.tagline-bar {
+  left: 0;
+  top: 122%;
+  height: 2px;
+  max-width: 100%;
+}
+
+.cta-area-outer.below-video {
+  position: absolute;
+  width: 100%;
+  top: 100%;
+}
+
+.cta-area-outer.tagline-bar {
+  position: absolute;
+  width: 100%;
+}
+
+.cta-area-outer .cta-rich-text .logo {
+  box-sizing: border-box;
+  height: 100%;
+  width: auto;
+  max-width: 100px;
+  max-height: 75px;
+}
+
+.cta-area-outer .cta-rich-text {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 32px;
+  column-gap: 32px;
+  width: 100%;
+}
+
+.cta-area-outer .cta-rich-text .rich-text-content {
+  width: calc(100% - 120px);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  color: grey;
+  white-space: normal;
+  text-align: left;
+}
+
+.cta-area-outer.below-video .cta-content {
+  text-align: left;
+  padding: 0 5px;
+  margin: 0;
+  white-space: normal !important;
+}
+
+.cta-area-outer .cta-slide .slide-content {
+  align-content: center;
+  white-space: nowrap !important;
+  width: 100%;
+}
+
+.cta-area-outer .cta-rich-text .logo img {
+  height: 75px;
+  width: auto;
+  max-width: calc(1.7 * 100vh) !important;
+}
+
+.rich-block {
+  overflow: hidden;
+  font-size: 13px;
+  opacity: 90%;
+  z-index: 1;
+  padding: 7% 10px;
+  border-radius: 10px;
+  font-family: Arial, sans-serif;
+  position: absolute;
+  top: 5%;
+  left: 15px;
+  width: 33%;
+  bottom: -8%;
+  text-align: left;
+}
+
+.rich-block h2 {
+  margin-top: 0;
+  font-size: 14px;
+}
+
+.rich-block p {
+  margin: 10px 0;
+}
+
+.rich-block a {
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.rich-block .close-button {
+  position: absolute;
+  top: 10px;
+  left: 5px;
+  background-color: transparent;
+  border: none;
+  width: 18px;
+  height: 19px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  font-size: 20px;
+  color: #000;
+  transition: background-color 0.3s;
+}
+
+.cta-area-outer.tagline-bar .socialWrapper {
+  margin-top: 16px;
+}
+
+.buttonWrapper {
+  width: 100%;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0px;
+  border-top: 1px solid grey;
+  margin-top: 16px;
+}
+
+.buttonWrapper .socialWrapper {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: grey;
+}
+
+button.socialIcon {
+  padding: 0;
+  background-color: unset;
+  border: none;
+  position: relative !important;
+  width: auto !important;
+  height: auto !important;
+  top: unset !important;
+  left: unset !important;
+}
+
+.socialIcon svg {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+@media (min-width: 1200px) {
+  .cta.below-video .cta-content {
+    flex-grow: 1;
+  }
+
+  .cta-area-outer.below-video .cta-button {
+    flex: 1;
+    width: auto;
+  }
+}
+
+.minimized-player-parent {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  height: auto;
+  z-index: 1000;
+  width: 344px;
+}
+
+.minimized-player-parent.square {
+  width: 244px !important;
+}
+
+.minimized-player-parent.portrait {
+  width: 244px !important;
+}
+
+.minimized-player-parent.landscape {
+  width: 344px !important;
+}
+
+.minimized-player-wrapper {
+  position: relative;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  color: #808080;
+  box-shadow: 0 0 6px 0 rgba(51, 51, 51, 0.18);
+  height: 100%;
+  border-radius: 8px;
+}
+
+.minimized-player-wrapper video-player {
+  flex: 1 1 auto;
+  height: auto !important;
+  /* max-height: 320px; */
+}
+
+.cta-minimized-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.trade-tracker-text {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 14px;
+  margin-top: 14px;
+  /* display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative; */
+  /* display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; */
+}
+
+.minimized-player-wrapper .button-container {
+  position: absolute;
+  width: 100%;
+  right: 0px;
+  top: 0px;
+  display: flex;
+  padding: 20px;
+}
+
+.minimized-player-wrapper .button-container .close-button {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 100%;
+  background: rgba(51, 51, 51, 0.6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+}
+
+.minimized-player-wrapper .button-container .close-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.minimized-player-wrapper .button-container .play-button {
+  display: none;
+}
+
+.minimized-player-wrapper .button-container .pause-button {
+  display: none;
+}
+
+.minimized-player-wrapper .button-container .fullscreen-button {
+  display: none;
+}
+
+.cta-button-minimized {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 8px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.minimized-player-wrapper video-player {
+  width: 100%;
+  /* Hide the error dialog */
+  --dialog: none;
+  /* Hide the loading indicator */
+  --loading-indicator: none;
+  /* Target all sections by excluding the section prefix */
+  --center-controls: none;
+  --play-button: none;
+  --live-button: none;
+  --seek-backward-button: none;
+  --seek-forward-button: none;
+  --captions-button: none;
+  --airplay-button: none;
+  --pip-button: none;
+  --cast-button: none;
+  --playback-rate-button: none;
+  --time-range: none;
+  --time-display: "true";
+  --duration-display: none;
+  --rendition-selectmenu: none;
+  --mute-button: true;
+}
