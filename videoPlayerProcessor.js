@@ -104,6 +104,7 @@ class VideoPlayerProcessor {
     this.state.isViewed = false;
     this.state.wasLaunched = false;
     this.state.complete = false;
+    this.state.trackingEnabled = false;
     this.minimizedPlayerWrapper = null;
     this.playPromise = null;
     this.isPlayingOperation = false;
@@ -217,18 +218,33 @@ class VideoPlayerProcessor {
             );
             if (!isVisible && !currentPlayer.paused) {
               currentPlayer.pause();
+              this.state.trackingEnabled = false;
               return;
             }
-            if (isVisible) {
+            if (
+              isVisible &&
+              !currentPlayer.paused &&
+              this.state.trackingEnabled
+            ) {
               this.processPosition(currentPlayer.currentTime, currentPlayer);
+            } else if (!isVisible || currentPlayer.paused) {
+              this.state.trackingEnabled = false;
             }
           }
         });
 
-        player.addEventListener("ended", () => {
+        player.addEventListener("pause", () => {
+          const pausedPlayer = this.getCurrentVideoPlayerElement();
+          if (pausedPlayer && pausedPlayer.id === playerId) {
+            this.state.trackingEnabled = false;
+          }
+        });
+
+        const expectedPlayerId =
+          "current-player-" + this.videoData.styleIdentifier;
+
+        const handleEnded = () => {
           const endedPlayer = this.getCurrentVideoPlayerElement();
-          const expectedPlayerId =
-            "current-player-" + this.videoData.styleIdentifier;
           if (
             endedPlayer &&
             endedPlayer.id === expectedPlayerId &&
@@ -241,7 +257,32 @@ class VideoPlayerProcessor {
               endedPlayer.style.setProperty("--play-button", "true");
             }
           }
-        });
+        };
+
+        if (player.id === expectedPlayerId) {
+          player.addEventListener("ended", handleEnded);
+
+          setTimeout(() => {
+            const currentPlayer = this.getCurrentVideoPlayerElement();
+            if (
+              currentPlayer &&
+              currentPlayer.id === expectedPlayerId &&
+              currentPlayer.shadowRoot
+            ) {
+              const mediaTheme =
+                currentPlayer.shadowRoot.querySelector("media-theme");
+              if (mediaTheme) {
+                const muxVideo = mediaTheme.querySelector("mux-video");
+                if (muxVideo && muxVideo.shadowRoot) {
+                  const video = muxVideo.shadowRoot.querySelector("video");
+                  if (video) {
+                    video.addEventListener("ended", handleEnded);
+                  }
+                }
+              }
+            }
+          }, 500);
+        }
 
         window.addEventListener("scroll", this.togglePlayOnViewPortVisibility);
 
@@ -314,6 +355,12 @@ class VideoPlayerProcessor {
     this.isPlayingOperation = true;
     this.playPromise = player
       .play()
+      .then(() => {
+        const isVisible = this.elementIsVisibleInViewport(player, false);
+        if (isVisible && !player.paused) {
+          this.state.trackingEnabled = true;
+        }
+      })
       .catch((error) => {
         if (error.name !== "AbortError") {
         }
@@ -363,6 +410,7 @@ class VideoPlayerProcessor {
           this.playPromise = null;
         }
         this.isPlayingOperation = false;
+        this.state.trackingEnabled = false;
 
         if (typeof player.pause === "function") {
           player.pause();
@@ -918,7 +966,12 @@ class VideoPlayerProcessor {
                 var isVisible = this.elementIsVisibleInViewport(player, false);
                 if (!isVisible) {
                   player.pause();
+                  this.state.trackingEnabled = false;
                   return;
+                }
+
+                if (!player.paused && isVisible) {
+                  this.state.trackingEnabled = true;
                 }
 
                 if (!this.state.wasLaunched) {
@@ -1670,7 +1723,7 @@ class VideoPlayerProcessor {
       if (document.getElementById(cssID) === null) {
         const style = document.createElement("link");
         style.id = cssID;
-        style.href = "./player.css";
+        style.href = this.videoData.cssLocation + "/player.css";
         style.type = "text/css";
         style.rel = "stylesheet";
         style.onload = () => resolve();
@@ -1811,103 +1864,87 @@ class VideoPlayerProcessor {
 
   processPosition(position, sourcePlayer = null) {
     const player = sourcePlayer || this.getCurrentVideoPlayerElement();
-    if (!player) {
-      return;
-    }
+    if (!player) return;
 
     const expectedPlayerId = "current-player-" + this.videoData.styleIdentifier;
     const minimizedPlayerId =
       "minimized-current-player-" + this.videoData.styleIdentifier;
 
-    if (player.id !== expectedPlayerId && player.id !== minimizedPlayerId) {
+    if (player.id !== expectedPlayerId && player.id !== minimizedPlayerId)
       return;
-    }
-
-    if (!this.state.wasLaunched) {
-      return;
-    }
-
-    if (player.paused) {
-      return;
-    }
+    if (!this.state.wasLaunched) return;
+    if (player.paused) return;
+    if (!this.state.trackingEnabled) return;
 
     if (player.id === expectedPlayerId) {
       const isVisible = this.elementIsVisibleInViewport(player, false);
       if (!isVisible) {
+        this.state.trackingEnabled = false;
+        return;
+      }
+      if (player.paused) {
+        this.state.trackingEnabled = false;
         return;
       }
     }
 
+    // normalize seconds
     let posString = position.toString();
     let myarr = posString.split(".");
     let seconds = parseInt(myarr[0]);
     let miliseconds = parseFloat(myarr[1]);
-    if (miliseconds > 900000) {
-      seconds++;
-    }
+    if (miliseconds > 900000) seconds++;
 
     if (this.playLog && !this.playLog.includes(seconds)) {
       this.playLog.push(seconds);
     }
 
-    if (seconds >= this.videoData.videoDurationSeconds - 1) {
-      if (this.state.wasLaunched && !this.state.complete) {
-        const completePlayer = this.getCurrentVideoPlayerElement();
-        const expectedPlayerId =
-          "current-player-" + this.videoData.styleIdentifier;
-
-        if (completePlayer && completePlayer.id === expectedPlayerId) {
-          this.eventTrigger("complete");
-          this.removeScrollListener();
-          completePlayer.style.setProperty("--play-button", "true");
-        }
-      }
-      return;
-    }
-
     if (
-      (seconds % this.videoData.sectionDurationSeconds === 0 ||
-        seconds === this.videoData.videoDurationSeconds) &&
+      seconds % this.videoData.sectionDurationSeconds === 0 &&
       this.sectionsObj
     ) {
-      this.sectionsObj.find((obj, index) => {
-        if (obj === undefined) {
-          return;
+      for (let index = 0; index < this.sectionsObj.length; index++) {
+        const obj = this.sectionsObj[index];
+        if (!obj) continue;
+
+        const alreadyPlayed = this.sectionsPlayed.some(
+          (played) => played.partNumber === obj.partNumber
+        );
+        if (alreadyPlayed) continue;
+
+        const nextPartNumber = this.sectionsPlayed.length + 1;
+        if (obj.partNumber !== nextPartNumber) continue;
+
+        const isWithinSection = seconds >= obj.start && seconds <= obj.end + 1;
+        if (!isWithinSection) continue;
+
+        const isAtSectionEnd = Math.abs(obj.end - seconds) <= 1;
+        if (!isAtSectionEnd) continue;
+
+        if (player.paused) continue;
+        if (!this.state.trackingEnabled) continue;
+        if (!this.state.wasLaunched) continue;
+
+        if (player.id === expectedPlayerId) {
+          const isVisible = this.elementIsVisibleInViewport(player, false);
+          if (!isVisible) continue;
         }
-        if (obj.end === seconds) {
-          if (
-            this.playLog.includes(
-              seconds - this.videoData.sectionDurationSeconds
-            )
-          ) {
-            this.eventTrigger("part", {
-              pn: index + 1,
-              tp: this.sectionsCount,
-              ps: this.videoData.sectionDurationSeconds,
-            });
 
-            this.sectionsPlayed.push(this.sectionsObj[index]);
-            delete this.sectionsObj[index];
+        const hasPlayedThroughSection = this.playLog.some(
+          (loggedSecond) => loggedSecond >= obj.start && loggedSecond <= obj.end
+        );
+        if (!hasPlayedThroughSection) continue;
 
-            if (this.sectionsPlayed.length === this.sectionsCount) {
-              const completePlayer = this.getCurrentVideoPlayerElement();
-              const expectedPlayerId =
-                "current-player-" + this.videoData.styleIdentifier;
+        this.eventTrigger("part", {
+          pn: obj.partNumber,
+          tp: this.sectionsCount,
+          ps: this.videoData.sectionDurationSeconds,
+        });
 
-              if (
-                this.state.wasLaunched &&
-                !this.state.complete &&
-                completePlayer &&
-                completePlayer.id === expectedPlayerId
-              ) {
-                this.eventTrigger("complete");
-                this.removeScrollListener();
-                completePlayer.style.setProperty("--play-button", "true");
-              }
-            }
-          }
-        }
-      });
+        this.sectionsPlayed.push(obj);
+        delete this.sectionsObj[index];
+        break;
+      }
     }
   }
 
