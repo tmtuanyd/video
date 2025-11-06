@@ -108,6 +108,7 @@ class VideoPlayerProcessor {
     this.playPromise = null;
     this.isPlayingOperation = false;
     this.scrollTimeout = null;
+    this.timeupdateListenersAttached = new Set();
 
     this.config = {
       showMinimizedPlayer:
@@ -198,9 +199,6 @@ class VideoPlayerProcessor {
       return;
     }
 
-    this.eventTrigger("impression");
-    this.eventTrigger("start");
-
     const player = this.getCurrentVideoPlayerElement();
     if (player) {
       this.syncTimeFromMinimizedPlayer();
@@ -208,9 +206,47 @@ class VideoPlayerProcessor {
     }
 
     if (player) {
-      player.addEventListener("timeupdate", () => {
-        this.processPosition(player.currentTime);
-      });
+      const playerId = player.id || `player-${this.videoData.styleIdentifier}`;
+      if (!this.timeupdateListenersAttached.has(playerId)) {
+        player.addEventListener("timeupdate", () => {
+          const currentPlayer = this.getCurrentVideoPlayerElement();
+          if (currentPlayer && currentPlayer.id === playerId) {
+            const isVisible = this.elementIsVisibleInViewport(
+              currentPlayer,
+              false
+            );
+            if (!isVisible && !currentPlayer.paused) {
+              currentPlayer.pause();
+              return;
+            }
+            if (isVisible) {
+              this.processPosition(currentPlayer.currentTime, currentPlayer);
+            }
+          }
+        });
+
+        player.addEventListener("ended", () => {
+          const endedPlayer = this.getCurrentVideoPlayerElement();
+          const expectedPlayerId =
+            "current-player-" + this.videoData.styleIdentifier;
+          if (
+            endedPlayer &&
+            endedPlayer.id === expectedPlayerId &&
+            this.state.wasLaunched &&
+            !this.state.complete
+          ) {
+            this.eventTrigger("complete");
+            this.removeScrollListener();
+            if (endedPlayer) {
+              endedPlayer.style.setProperty("--play-button", "true");
+            }
+          }
+        });
+
+        window.addEventListener("scroll", this.togglePlayOnViewPortVisibility);
+
+        this.timeupdateListenersAttached.add(playerId);
+      }
     }
   };
 
@@ -232,18 +268,36 @@ class VideoPlayerProcessor {
   };
 
   syncTimeFromMinimizedPlayer() {
-    if (this.isMinimized && this.minimizedPlayerWrapper) {
-      const minimizedPlayer =
-        this.minimizedPlayerWrapper.querySelector("video-player");
-      if (minimizedPlayer && this.videoData.player) {
+    if (this.isMinimized) {
+      const minimizedPlayer = this.getMinimizedPlayerElement();
+      const mainPlayer = this.getCurrentVideoPlayerElement();
+      if (minimizedPlayer && mainPlayer) {
         this.currentTime = minimizedPlayer.currentTime;
-        this.videoData.player.currentTime = this.currentTime;
+        mainPlayer.currentTime = this.currentTime;
       }
     }
   }
 
   safePlay = async (player) => {
-    if (!player || typeof player.play !== "function") {
+    if (!player) {
+      return;
+    }
+
+    const expectedPlayerId = "current-player-" + this.videoData.styleIdentifier;
+    if (player.id !== expectedPlayerId) {
+      return;
+    }
+
+    if (typeof player.play !== "function") {
+      return;
+    }
+
+    const isVisible = this.elementIsVisibleInViewport(player, false);
+    if (!isVisible) {
+      return;
+    }
+
+    if (!player.paused) {
       return;
     }
 
@@ -262,7 +316,6 @@ class VideoPlayerProcessor {
       .play()
       .catch((error) => {
         if (error.name !== "AbortError") {
-          console.log("Play failed:", error);
         }
         return null;
       })
@@ -458,9 +511,22 @@ class VideoPlayerProcessor {
     const minimizedPlayer = videoElement.cloneNode(true);
     minimizedPlayer.id = `minimized-current-player-${this.videoData.styleIdentifier}`;
     minimizedPlayer.currentTime = this.currentTime;
-    minimizedPlayer.addEventListener("timeupdate", () => {
-      this.processPosition(minimizedPlayer.currentTime);
-    });
+    const initMinimizedPlayerId = minimizedPlayer.id;
+    if (!this.timeupdateListenersAttached.has(initMinimizedPlayerId)) {
+      minimizedPlayer.addEventListener("timeupdate", () => {
+        const currentMinimizedPlayer = this.getMinimizedPlayerElement();
+        if (
+          currentMinimizedPlayer &&
+          currentMinimizedPlayer.id === initMinimizedPlayerId
+        ) {
+          this.processPosition(
+            currentMinimizedPlayer.currentTime,
+            currentMinimizedPlayer
+          );
+        }
+      });
+      this.timeupdateListenersAttached.add(initMinimizedPlayerId);
+    }
     wrapperDiv.appendChild(minimizedPlayer);
 
     if (minimizedPlayer.shadowRoot) {
@@ -658,19 +724,32 @@ class VideoPlayerProcessor {
     this.isMinimized = true;
     if (this.minimizedPlayerWrapper) {
       this.minimizedPlayerWrapper.style.display = "flex";
-      const minimizedPlayer =
-        this.minimizedPlayerWrapper.querySelector("video-player");
+      const minimizedPlayer = this.getMinimizedPlayerElement();
       if (minimizedPlayer) {
         minimizedPlayer.currentTime = this.currentTime;
         minimizedPlayer.play();
-        minimizedPlayer.addEventListener("timeupdate", () => {
-          this.currentTime = minimizedPlayer.currentTime;
-          this.processPosition(minimizedPlayer.currentTime);
-        });
+        const minimizedPlayerId =
+          minimizedPlayer.id ||
+          `minimized-player-${this.videoData.styleIdentifier}`;
+        if (!this.timeupdateListenersAttached.has(minimizedPlayerId)) {
+          minimizedPlayer.addEventListener("timeupdate", () => {
+            const currentMinimizedPlayer = this.getMinimizedPlayerElement();
+            if (
+              currentMinimizedPlayer &&
+              currentMinimizedPlayer.id === minimizedPlayerId
+            ) {
+              this.currentTime = currentMinimizedPlayer.currentTime;
+              this.processPosition(
+                currentMinimizedPlayer.currentTime,
+                currentMinimizedPlayer
+              );
+            }
+          });
+          this.timeupdateListenersAttached.add(minimizedPlayerId);
+        }
       }
       return;
     }
-    // Use unique ID for minimized player wrapper
   }
 
   closeMinimizedPlayer(minimizedPlayer, videoElement) {
@@ -678,7 +757,12 @@ class VideoPlayerProcessor {
     this.isClosed = true;
     this.currentTime = minimizedPlayer.currentTime;
     videoElement.currentTime = this.currentTime;
-    videoElement.play();
+
+    const isVisible = this.elementIsVisibleInViewport(videoElement, false);
+    if (isVisible) {
+      this.safePlay(videoElement);
+    }
+
     if (this.minimizedPlayerWrapper) {
       this.minimizedPlayerWrapper.style.display = "none";
       minimizedPlayer.pause();
@@ -690,11 +774,16 @@ class VideoPlayerProcessor {
     this.isClosed = false;
     const wrapperDiv = this.minimizedPlayerWrapper;
     if (wrapperDiv) {
-      const minimizedPlayer = wrapperDiv.querySelector("video-player");
+      const minimizedPlayer = this.getMinimizedPlayerElement();
       if (minimizedPlayer) {
         this.currentTime = minimizedPlayer.currentTime;
         videoElement.currentTime = this.currentTime;
-        videoElement.play();
+
+        const isVisible = this.elementIsVisibleInViewport(videoElement, false);
+        if (isVisible) {
+          this.safePlay(videoElement);
+        }
+
         wrapperDiv.style.display = "none";
         minimizedPlayer.pause();
       }
@@ -808,17 +897,33 @@ class VideoPlayerProcessor {
             });
 
             if (this.videoData.player) {
-              this.updateVideoSizeOnResize();
+              setTimeout(() => {
+                this.updateVideoSizeOnResize();
+              }, 200);
 
               this.checkAndStartVideoIfVisible();
 
               this.videoData.player.addEventListener("play", (event) => {
-                var isVisible = this.elementIsVisibleInViewport(
-                  this.getCurrentVideoPlayerElement(),
-                  false
-                );
+                const player = this.getCurrentVideoPlayerElement();
+                if (!player) {
+                  return;
+                }
+
+                const expectedPlayerId =
+                  "current-player-" + this.videoData.styleIdentifier;
+                if (player.id !== expectedPlayerId) {
+                  return;
+                }
+
+                var isVisible = this.elementIsVisibleInViewport(player, false);
                 if (!isVisible) {
-                  this.getCurrentVideoPlayerElement().pause();
+                  player.pause();
+                  return;
+                }
+
+                if (!this.state.wasLaunched) {
+                  this.eventTrigger("impression");
+                  this.eventTrigger("start");
                 }
 
                 if (wrapper.querySelector(".skeleton-loader") != null) {
@@ -946,7 +1051,12 @@ class VideoPlayerProcessor {
 
   addFullScreenListener(wrapper) {
     const scheduleFullscreenListener = () => {
-      let player = wrapper.querySelector("video-player");
+      let player = this.getCurrentVideoPlayerElement();
+
+      if (!player) {
+        setTimeout(scheduleFullscreenListener, 250);
+        return;
+      }
 
       if (player.shadowRoot) {
         let mediaTheme = player.shadowRoot.querySelector("media-theme");
@@ -985,7 +1095,12 @@ class VideoPlayerProcessor {
 
   addMuteListeners(wrapper) {
     const scheduleMuteListener = () => {
-      let player = wrapper.querySelector("video-player");
+      let player = this.getCurrentVideoPlayerElement();
+
+      if (!player) {
+        setTimeout(scheduleMuteListener, 250);
+        return;
+      }
 
       if (player.shadowRoot) {
         let mediaTheme = player.shadowRoot.querySelector("media-theme");
@@ -1107,6 +1222,12 @@ class VideoPlayerProcessor {
     );
   }
 
+  getMinimizedPlayerElement() {
+    return document.getElementById(
+      "minimized-current-player-" + this.videoData.styleIdentifier
+    );
+  }
+
   getVideoWrapperElement(identifier = false) {
     if (!identifier) {
       identifier = this.videoData.styleIdentifier;
@@ -1114,25 +1235,59 @@ class VideoPlayerProcessor {
     return document.getElementById("video-wrapper-" + identifier);
   }
 
-  updateVideoSizeOnResize() {
-    if (!this.videoData.player) {
+  updateVideoSizeOnResize(retryCount = 0) {
+    const player = this.getCurrentVideoPlayerElement();
+    if (!player) {
       return;
     }
 
-    var player = this.videoData.player;
+    const expectedId = "current-player-" + this.videoData.styleIdentifier;
+    if (player.id !== expectedId) {
+      const correctPlayer = document.getElementById(expectedId);
+      if (!correctPlayer) {
+        return;
+      }
+      return this.updateVideoSizeOnResizeForPlayer(correctPlayer, retryCount);
+    }
+
+    return this.updateVideoSizeOnResizeForPlayer(player, retryCount);
+  }
+
+  updateVideoSizeOnResizeForPlayer(player, retryCount = 0) {
+    if (!player) {
+      return;
+    }
 
     var maxViewportHeight = Math.floor(window.innerHeight * 0.7);
 
-    player.style.maxHeight = maxViewportHeight + "px";
+    if (player.style) {
+      player.style.maxHeight = maxViewportHeight + "px";
+    }
+
+    if (!player.shadowRoot) {
+      if (retryCount < 5) {
+        setTimeout(() => {
+          this.updateVideoSizeOnResizeForPlayer(player, retryCount + 1);
+        }, 100);
+      }
+      return;
+    }
 
     const mediaTheme = player.shadowRoot.querySelector("media-theme");
-    if (mediaTheme) {
-      const muxVideo = mediaTheme.querySelector("mux-video");
-      if (muxVideo) {
-        const video = muxVideo.shadowRoot.querySelector("video");
-        if (video) {
-          video.style.maxHeight = maxViewportHeight + "px";
-        }
+    if (!mediaTheme) {
+      if (retryCount < 5) {
+        setTimeout(() => {
+          this.updateVideoSizeOnResizeForPlayer(player, retryCount + 1);
+        }, 100);
+      }
+      return;
+    }
+
+    const muxVideo = mediaTheme.querySelector("mux-video");
+    if (muxVideo && muxVideo.shadowRoot) {
+      const video = muxVideo.shadowRoot.querySelector("video");
+      if (video) {
+        video.style.maxHeight = maxViewportHeight + "px";
       }
     }
   }
@@ -1278,6 +1433,8 @@ class VideoPlayerProcessor {
     let playerHtml =
       '<div style="position: relative"><video-player id="current-player-' +
       this.videoData.styleIdentifier +
+      '" autoplay="' +
+      autoplayValue +
       '" ' +
       muted +
       ' nohotkeys default-show-remaining-time="true" ' +
@@ -1566,20 +1723,27 @@ class VideoPlayerProcessor {
       return;
     }
 
+    const player = this.getCurrentVideoPlayerElement();
+    const expectedPlayerId = "current-player-" + this.videoData.styleIdentifier;
+    if (player && player.id !== expectedPlayerId) {
+      return;
+    }
+
     switch (eventType) {
       case "impression":
         if (this.state.isViewed) {
           return;
         }
         var url = this.videoData.impressionURL;
-
         this.fetchData(url);
         this.state.isViewed = true;
-
         break;
 
       case "start":
-        this.videoData.player.classList.remove("complete");
+        const startPlayer = this.getCurrentVideoPlayerElement();
+        if (startPlayer) {
+          startPlayer.classList.remove("complete");
+        }
         this.state.complete = false;
 
         if (this.state.wasLaunched) {
@@ -1589,33 +1753,35 @@ class VideoPlayerProcessor {
         var url = this.populateSessionId(
           this.videoData.eventURLs.videoEventStartURL
         );
-
         this.fetchData(url);
         this.state.wasLaunched = true;
-
         break;
 
       case "part":
         var url = this.populateSessionId(
           this.videoData.eventURLs.videoEventPartURL
         );
-
         var searchParams = new URLSearchParams(url.search);
         searchParams.set("pn", params.pn);
         searchParams.set("tp", params.tp);
         searchParams.set("ps", params.ps);
         url.search = searchParams.toString();
-
         this.fetchData(url);
-
         break;
 
       case "complete":
+        if (!this.state.wasLaunched) {
+          return;
+        }
+
         var url = this.populateSessionId(
           this.videoData.eventURLs.videoEventCompleteURL
         );
         this.fetchData(url);
-        this.videoData.player.classList.add("complete");
+        const completePlayer = this.getCurrentVideoPlayerElement();
+        if (completePlayer) {
+          completePlayer.classList.add("complete");
+        }
         this.state.complete = true;
 
         if (this.videoData.ctaHover && this.videoData.ctaShowOnHover === "t") {
@@ -1643,7 +1809,35 @@ class VideoPlayerProcessor {
     }
   }
 
-  processPosition(position) {
+  processPosition(position, sourcePlayer = null) {
+    const player = sourcePlayer || this.getCurrentVideoPlayerElement();
+    if (!player) {
+      return;
+    }
+
+    const expectedPlayerId = "current-player-" + this.videoData.styleIdentifier;
+    const minimizedPlayerId =
+      "minimized-current-player-" + this.videoData.styleIdentifier;
+
+    if (player.id !== expectedPlayerId && player.id !== minimizedPlayerId) {
+      return;
+    }
+
+    if (!this.state.wasLaunched) {
+      return;
+    }
+
+    if (player.paused) {
+      return;
+    }
+
+    if (player.id === expectedPlayerId) {
+      const isVisible = this.elementIsVisibleInViewport(player, false);
+      if (!isVisible) {
+        return;
+      }
+    }
+
     let posString = position.toString();
     let myarr = posString.split(".");
     let seconds = parseInt(myarr[0]);
@@ -1654,6 +1848,21 @@ class VideoPlayerProcessor {
 
     if (this.playLog && !this.playLog.includes(seconds)) {
       this.playLog.push(seconds);
+    }
+
+    if (seconds >= this.videoData.videoDurationSeconds - 1) {
+      if (this.state.wasLaunched && !this.state.complete) {
+        const completePlayer = this.getCurrentVideoPlayerElement();
+        const expectedPlayerId =
+          "current-player-" + this.videoData.styleIdentifier;
+
+        if (completePlayer && completePlayer.id === expectedPlayerId) {
+          this.eventTrigger("complete");
+          this.removeScrollListener();
+          completePlayer.style.setProperty("--play-button", "true");
+        }
+      }
+      return;
     }
 
     if (
@@ -1679,11 +1888,22 @@ class VideoPlayerProcessor {
 
             this.sectionsPlayed.push(this.sectionsObj[index]);
             delete this.sectionsObj[index];
-            if (this.sectionsPlayed.length === this.sectionsCount) {
-              this.eventTrigger("complete");
-              this.removeScrollListener();
 
-              this.videoData.player.style.setProperty("--play-button", "true");
+            if (this.sectionsPlayed.length === this.sectionsCount) {
+              const completePlayer = this.getCurrentVideoPlayerElement();
+              const expectedPlayerId =
+                "current-player-" + this.videoData.styleIdentifier;
+
+              if (
+                this.state.wasLaunched &&
+                !this.state.complete &&
+                completePlayer &&
+                completePlayer.id === expectedPlayerId
+              ) {
+                this.eventTrigger("complete");
+                this.removeScrollListener();
+                completePlayer.style.setProperty("--play-button", "true");
+              }
             }
           }
         }
@@ -1693,10 +1913,6 @@ class VideoPlayerProcessor {
 
   elementIsVisibleInViewport(el, debug = false) {
     if (!el) {
-      if (debug) {
-        console.log("Element is not visible in viewport");
-      }
-
       return false;
     }
 
