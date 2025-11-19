@@ -236,7 +236,14 @@ class VideoPlayerProcessor {
         player.addEventListener("pause", () => {
           const pausedPlayer = this.getCurrentVideoPlayerElement();
           if (pausedPlayer && pausedPlayer.id === playerId) {
-            this.state.trackingEnabled = false;
+            const minimizedPlayer = this.getMinimizedPlayerElement();
+            if (
+              !minimizedPlayer ||
+              minimizedPlayer.paused ||
+              !this.isMinimized
+            ) {
+              this.state.trackingEnabled = false;
+            }
           }
         });
 
@@ -567,14 +574,55 @@ class VideoPlayerProcessor {
           currentMinimizedPlayer &&
           currentMinimizedPlayer.id === initMinimizedPlayerId
         ) {
+          if (currentMinimizedPlayer.paused) {
+            this.state.trackingEnabled = false;
+            return;
+          }
           this.processPosition(
             currentMinimizedPlayer.currentTime,
             currentMinimizedPlayer
           );
         }
       });
+
+      minimizedPlayer.addEventListener("pause", () => {
+        const pausedMinimizedPlayer = this.getMinimizedPlayerElement();
+        if (
+          pausedMinimizedPlayer &&
+          pausedMinimizedPlayer.id === initMinimizedPlayerId
+        ) {
+          const mainPlayer = this.getCurrentVideoPlayerElement();
+          if (
+            !mainPlayer ||
+            mainPlayer.paused ||
+            !this.elementIsVisibleInViewport(mainPlayer, false)
+          ) {
+            this.state.trackingEnabled = false;
+          }
+        }
+      });
+
       this.timeupdateListenersAttached.add(initMinimizedPlayerId);
     }
+
+    const handleMinimizedPlayerEnded = () => {
+      const currentMinimizedPlayer = this.getMinimizedPlayerElement();
+      const expectedMinimizedPlayerId =
+        "minimized-current-player-" + this.videoData.styleIdentifier;
+      if (
+        currentMinimizedPlayer &&
+        currentMinimizedPlayer.id === expectedMinimizedPlayerId &&
+        this.state.wasLaunched &&
+        !this.state.complete &&
+        this.isMinimized
+      ) {
+        this.eventTrigger("complete");
+        this.removeScrollListener();
+      }
+    };
+
+    minimizedPlayer.addEventListener("ended", handleMinimizedPlayerEnded);
+
     wrapperDiv.appendChild(minimizedPlayer);
 
     if (minimizedPlayer.shadowRoot) {
@@ -585,9 +633,13 @@ class VideoPlayerProcessor {
         if (muxVideo) {
           const video = muxVideo.shadowRoot.querySelector("video");
           if (video) {
+            video.addEventListener("ended", handleMinimizedPlayerEnded);
+
             video.addEventListener(
               "loadedmetadata",
               function () {
+                video.addEventListener("ended", handleMinimizedPlayerEnded);
+
                 const w = video.videoWidth;
                 const h = video.videoHeight;
                 const ratio = +(w / h).toFixed(2);
@@ -776,6 +828,9 @@ class VideoPlayerProcessor {
       if (minimizedPlayer) {
         minimizedPlayer.currentTime = this.currentTime;
         minimizedPlayer.play();
+        if (!this.state.trackingEnabled && this.state.wasLaunched) {
+          this.state.trackingEnabled = true;
+        }
         const minimizedPlayerId =
           minimizedPlayer.id ||
           `minimized-player-${this.videoData.styleIdentifier}`;
@@ -786,6 +841,17 @@ class VideoPlayerProcessor {
               currentMinimizedPlayer &&
               currentMinimizedPlayer.id === minimizedPlayerId
             ) {
+              if (currentMinimizedPlayer.paused) {
+                const mainPlayer = this.getCurrentVideoPlayerElement();
+                if (
+                  !mainPlayer ||
+                  mainPlayer.paused ||
+                  !this.elementIsVisibleInViewport(mainPlayer, false)
+                ) {
+                  this.state.trackingEnabled = false;
+                }
+                return;
+              }
               this.currentTime = currentMinimizedPlayer.currentTime;
               this.processPosition(
                 currentMinimizedPlayer.currentTime,
@@ -793,8 +859,60 @@ class VideoPlayerProcessor {
               );
             }
           });
+
+          minimizedPlayer.addEventListener("pause", () => {
+            const pausedMinimizedPlayer = this.getMinimizedPlayerElement();
+            if (
+              pausedMinimizedPlayer &&
+              pausedMinimizedPlayer.id === minimizedPlayerId
+            ) {
+              const mainPlayer = this.getCurrentVideoPlayerElement();
+              if (
+                !mainPlayer ||
+                mainPlayer.paused ||
+                !this.elementIsVisibleInViewport(mainPlayer, false)
+              ) {
+                this.state.trackingEnabled = false;
+              }
+            }
+          });
+
           this.timeupdateListenersAttached.add(minimizedPlayerId);
         }
+
+        const handleMinimizedPlayerEnded = () => {
+          const currentMinimizedPlayer = this.getMinimizedPlayerElement();
+          const expectedMinimizedPlayerId =
+            "minimized-current-player-" + this.videoData.styleIdentifier;
+          if (
+            currentMinimizedPlayer &&
+            currentMinimizedPlayer.id === expectedMinimizedPlayerId &&
+            this.state.wasLaunched &&
+            !this.state.complete &&
+            this.isMinimized
+          ) {
+            this.eventTrigger("complete");
+            this.removeScrollListener();
+          }
+        };
+
+        minimizedPlayer.addEventListener("ended", handleMinimizedPlayerEnded);
+
+        setTimeout(() => {
+          if (minimizedPlayer.shadowRoot) {
+            const mediaTheme =
+              minimizedPlayer.shadowRoot.querySelector("media-theme");
+            if (mediaTheme) {
+              const muxVideo = mediaTheme.querySelector("mux-video");
+              if (muxVideo && muxVideo.shadowRoot) {
+                const video = muxVideo.shadowRoot.querySelector("video");
+                if (video) {
+                  video.addEventListener("ended", handleMinimizedPlayerEnded);
+                }
+              }
+            }
+          }
+        }, 500);
       }
       return;
     }
@@ -1873,17 +1991,37 @@ class VideoPlayerProcessor {
     if (player.id !== expectedPlayerId && player.id !== minimizedPlayerId)
       return;
     if (!this.state.wasLaunched) return;
-    if (player.paused) return;
-    if (!this.state.trackingEnabled) return;
+
+    if (player.paused) {
+      if (player.id === expectedPlayerId) {
+        const minimizedPlayer = this.getMinimizedPlayerElement();
+        if (!minimizedPlayer || minimizedPlayer.paused || !this.isMinimized) {
+          this.state.trackingEnabled = false;
+          return;
+        }
+      } else if (player.id === minimizedPlayerId) {
+        const mainPlayer = this.getCurrentVideoPlayerElement();
+        if (
+          !mainPlayer ||
+          mainPlayer.paused ||
+          !this.elementIsVisibleInViewport(mainPlayer, false)
+        ) {
+          this.state.trackingEnabled = false;
+          return;
+        }
+      }
+      return;
+    }
+
+    const isMinimizedPlayer = player.id === minimizedPlayerId;
+    if (!isMinimizedPlayer && !this.state.trackingEnabled) return;
 
     if (player.id === expectedPlayerId) {
       const isVisible = this.elementIsVisibleInViewport(player, false);
       if (!isVisible) {
-        this.state.trackingEnabled = false;
-        return;
-      }
-      if (player.paused) {
-        this.state.trackingEnabled = false;
+        if (!this.isMinimized) {
+          this.state.trackingEnabled = false;
+        }
         return;
       }
     }
@@ -1922,7 +2060,8 @@ class VideoPlayerProcessor {
         if (!isAtSectionEnd) continue;
 
         if (player.paused) continue;
-        if (!this.state.trackingEnabled) continue;
+        const isMinimizedPlayer = player.id === minimizedPlayerId;
+        if (!isMinimizedPlayer && !this.state.trackingEnabled) continue;
         if (!this.state.wasLaunched) continue;
 
         if (player.id === expectedPlayerId) {
