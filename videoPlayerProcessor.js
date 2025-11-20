@@ -212,15 +212,60 @@ class VideoPlayerProcessor {
         player.addEventListener("timeupdate", () => {
           const currentPlayer = this.getCurrentVideoPlayerElement();
           if (currentPlayer && currentPlayer.id === playerId) {
+            if (this.state.complete) {
+              if (typeof currentPlayer.pause === "function") {
+                currentPlayer.pause();
+              }
+              const minimizedPlayer = this.getMinimizedPlayerElement();
+              if (
+                minimizedPlayer &&
+                typeof minimizedPlayer.pause === "function"
+              ) {
+                minimizedPlayer.pause();
+              }
+              this.state.trackingEnabled = false;
+              return;
+            }
+
             const isVisible = this.elementIsVisibleInViewport(
               currentPlayer,
               false
             );
             if (!isVisible && !currentPlayer.paused) {
-              currentPlayer.pause();
-              this.state.trackingEnabled = false;
+              const minimizedPlayer = this.getMinimizedPlayerElement();
+              const minimizedWrapper = this.minimizedPlayerWrapper;
+              const isMinimizedVisible =
+                minimizedWrapper &&
+                minimizedWrapper.style.display !== "none" &&
+                minimizedPlayer &&
+                !minimizedPlayer.paused;
+
+              if (!isMinimizedVisible) {
+                currentPlayer.pause();
+                this.state.trackingEnabled = false;
+              }
               return;
             }
+
+            if (isVisible && !currentPlayer.paused && this.isMinimized) {
+              const minimizedPlayer = this.getMinimizedPlayerElement();
+              const minimizedWrapper = this.minimizedPlayerWrapper;
+              if (
+                minimizedPlayer &&
+                minimizedWrapper &&
+                minimizedWrapper.style.display !== "none" &&
+                !minimizedPlayer.paused
+              ) {
+                if (
+                  Math.abs(
+                    minimizedPlayer.currentTime - currentPlayer.currentTime
+                  ) > 0.5
+                ) {
+                  minimizedPlayer.currentTime = currentPlayer.currentTime;
+                }
+              }
+            }
+
             if (
               isVisible &&
               !currentPlayer.paused &&
@@ -228,7 +273,17 @@ class VideoPlayerProcessor {
             ) {
               this.processPosition(currentPlayer.currentTime, currentPlayer);
             } else if (!isVisible || currentPlayer.paused) {
-              this.state.trackingEnabled = false;
+              const minimizedPlayer = this.getMinimizedPlayerElement();
+              const minimizedWrapper = this.minimizedPlayerWrapper;
+              const isMinimizedVisible =
+                minimizedWrapper &&
+                minimizedWrapper.style.display !== "none" &&
+                minimizedPlayer &&
+                !minimizedPlayer.paused;
+
+              if (!isMinimizedVisible) {
+                this.state.trackingEnabled = false;
+              }
             }
           }
         });
@@ -258,6 +313,11 @@ class VideoPlayerProcessor {
             this.state.wasLaunched &&
             !this.state.complete
           ) {
+            const minimizedPlayer = this.getMinimizedPlayerElement();
+            if (minimizedPlayer) {
+              this.syncPlayerToEnd(minimizedPlayer, endedPlayer);
+            }
+
             this.eventTrigger("complete");
             this.removeScrollListener();
             if (endedPlayer) {
@@ -319,9 +379,11 @@ class VideoPlayerProcessor {
     if (this.isMinimized) {
       const minimizedPlayer = this.getMinimizedPlayerElement();
       const mainPlayer = this.getCurrentVideoPlayerElement();
-      if (minimizedPlayer && mainPlayer) {
+      if (minimizedPlayer && mainPlayer && !minimizedPlayer.paused) {
         this.currentTime = minimizedPlayer.currentTime;
-        mainPlayer.currentTime = this.currentTime;
+        if (Math.abs(mainPlayer.currentTime - this.currentTime) > 0.5) {
+          mainPlayer.currentTime = this.currentTime;
+        }
       }
     }
   }
@@ -333,6 +395,10 @@ class VideoPlayerProcessor {
 
     const expectedPlayerId = "current-player-" + this.videoData.styleIdentifier;
     if (player.id !== expectedPlayerId) {
+      return;
+    }
+
+    if (this.state.complete) {
       return;
     }
 
@@ -417,14 +483,31 @@ class VideoPlayerProcessor {
           this.playPromise = null;
         }
         this.isPlayingOperation = false;
-        this.state.trackingEnabled = false;
 
-        if (typeof player.pause === "function") {
-          player.pause();
+        const minimizedPlayer = this.getMinimizedPlayerElement();
+        const minimizedWrapper = this.minimizedPlayerWrapper;
+        const isMinimizedVisible =
+          minimizedWrapper &&
+          minimizedWrapper.style.display !== "none" &&
+          minimizedPlayer &&
+          !minimizedPlayer.paused;
+
+        if (!isMinimizedVisible) {
+          this.state.trackingEnabled = false;
+          if (typeof player.pause === "function") {
+            player.pause();
+          }
+          if (minimizedPlayer && typeof minimizedPlayer.pause === "function") {
+            minimizedPlayer.pause();
+          }
         }
       } else {
-        this.syncTimeFromMinimizedPlayer();
-        this.safePlay(player);
+        if (!player.paused) {
+          this.syncTimeFromMinimizedPlayer();
+        } else {
+          this.syncTimeFromMinimizedPlayer();
+          this.safePlay(player);
+        }
       }
     }, 100);
   };
@@ -574,10 +657,53 @@ class VideoPlayerProcessor {
           currentMinimizedPlayer &&
           currentMinimizedPlayer.id === initMinimizedPlayerId
         ) {
-          if (currentMinimizedPlayer.paused) {
+          if (this.state.complete) {
+            if (typeof currentMinimizedPlayer.pause === "function") {
+              currentMinimizedPlayer.pause();
+            }
             this.state.trackingEnabled = false;
             return;
           }
+
+          const minimizedWrapper = this.minimizedPlayerWrapper;
+          const isMinimizedVisible =
+            minimizedWrapper && minimizedWrapper.style.display !== "none";
+
+          if (!isMinimizedVisible) {
+            if (typeof currentMinimizedPlayer.pause === "function") {
+              currentMinimizedPlayer.pause();
+            }
+            const mainPlayer = this.getCurrentVideoPlayerElement();
+            if (
+              !mainPlayer ||
+              mainPlayer.paused ||
+              !this.elementIsVisibleInViewport(mainPlayer, false)
+            ) {
+              this.state.trackingEnabled = false;
+            }
+            return;
+          }
+
+          if (currentMinimizedPlayer.paused) {
+            const mainPlayer = this.getCurrentVideoPlayerElement();
+            if (
+              !mainPlayer ||
+              mainPlayer.paused ||
+              !this.elementIsVisibleInViewport(mainPlayer, false)
+            ) {
+              this.state.trackingEnabled = false;
+            }
+            return;
+          }
+
+          this.currentTime = currentMinimizedPlayer.currentTime;
+          const mainPlayer = this.getCurrentVideoPlayerElement();
+          if (mainPlayer) {
+            if (Math.abs(mainPlayer.currentTime - this.currentTime) > 0.5) {
+              mainPlayer.currentTime = this.currentTime;
+            }
+          }
+
           this.processPosition(
             currentMinimizedPlayer.currentTime,
             currentMinimizedPlayer
@@ -616,6 +742,11 @@ class VideoPlayerProcessor {
         !this.state.complete &&
         this.isMinimized
       ) {
+        const mainPlayer = this.getCurrentVideoPlayerElement();
+        if (mainPlayer) {
+          this.syncPlayerToEnd(mainPlayer, currentMinimizedPlayer);
+        }
+
         this.eventTrigger("complete");
         this.removeScrollListener();
       }
@@ -721,9 +852,11 @@ class VideoPlayerProcessor {
                 playButton.innerHTML = playIcon;
                 playButton.style.display = "none";
                 playButton.addEventListener("click", () => {
-                  minimizedPlayer.play();
-                  playButton.style.display = "none";
-                  pauseButton.style.display = "block";
+                  if (!this.state.complete) {
+                    minimizedPlayer.play();
+                    playButton.style.display = "none";
+                    pauseButton.style.display = "block";
+                  }
                 });
                 buttonContainer.appendChild(playButton);
 
@@ -775,11 +908,26 @@ class VideoPlayerProcessor {
     const isOutOfView = rect.bottom < 0;
 
     if (isInView) {
+      if (this.isMinimized) {
+        const minimizedPlayer = this.getMinimizedPlayerElement();
+        if (minimizedPlayer) {
+          this.currentTime = minimizedPlayer.currentTime;
+          videoElement.currentTime = this.currentTime;
+        }
+      }
+
       document
         .querySelectorAll(".minimized-player-wrapper")
         .forEach((wrapper) => {
           wrapper.style.display = "none";
+          const minimizedPlayer = wrapper.querySelector(
+            `#minimized-current-player-${this.videoData.styleIdentifier}`
+          );
+          if (minimizedPlayer && typeof minimizedPlayer.pause === "function") {
+            minimizedPlayer.pause();
+          }
         });
+      this.isMinimized = false;
       return;
     }
 
@@ -826,6 +974,16 @@ class VideoPlayerProcessor {
       this.minimizedPlayerWrapper.style.display = "flex";
       const minimizedPlayer = this.getMinimizedPlayerElement();
       if (minimizedPlayer) {
+        if (this.state.complete) {
+          minimizedPlayer.currentTime =
+            this.videoData.videoDurationSeconds ||
+            minimizedPlayer.duration ||
+            0;
+          minimizedPlayer.pause();
+          this.state.trackingEnabled = false;
+          return;
+        }
+
         minimizedPlayer.currentTime = this.currentTime;
         minimizedPlayer.play();
         if (!this.state.trackingEnabled && this.state.wasLaunched) {
@@ -841,6 +999,33 @@ class VideoPlayerProcessor {
               currentMinimizedPlayer &&
               currentMinimizedPlayer.id === minimizedPlayerId
             ) {
+              if (this.state.complete) {
+                if (typeof currentMinimizedPlayer.pause === "function") {
+                  currentMinimizedPlayer.pause();
+                }
+                this.state.trackingEnabled = false;
+                return;
+              }
+
+              const minimizedWrapper = this.minimizedPlayerWrapper;
+              const isMinimizedVisible =
+                minimizedWrapper && minimizedWrapper.style.display !== "none";
+
+              if (!isMinimizedVisible) {
+                if (typeof currentMinimizedPlayer.pause === "function") {
+                  currentMinimizedPlayer.pause();
+                }
+                const mainPlayer = this.getCurrentVideoPlayerElement();
+                if (
+                  !mainPlayer ||
+                  mainPlayer.paused ||
+                  !this.elementIsVisibleInViewport(mainPlayer, false)
+                ) {
+                  this.state.trackingEnabled = false;
+                }
+                return;
+              }
+
               if (currentMinimizedPlayer.paused) {
                 const mainPlayer = this.getCurrentVideoPlayerElement();
                 if (
@@ -852,7 +1037,15 @@ class VideoPlayerProcessor {
                 }
                 return;
               }
+
               this.currentTime = currentMinimizedPlayer.currentTime;
+              const mainPlayer = this.getCurrentVideoPlayerElement();
+              if (mainPlayer) {
+                if (Math.abs(mainPlayer.currentTime - this.currentTime) > 0.5) {
+                  mainPlayer.currentTime = this.currentTime;
+                }
+              }
+
               this.processPosition(
                 currentMinimizedPlayer.currentTime,
                 currentMinimizedPlayer
@@ -891,6 +1084,11 @@ class VideoPlayerProcessor {
             !this.state.complete &&
             this.isMinimized
           ) {
+            const mainPlayer = this.getCurrentVideoPlayerElement();
+            if (mainPlayer) {
+              this.syncPlayerToEnd(mainPlayer, currentMinimizedPlayer);
+            }
+
             this.eventTrigger("complete");
             this.removeScrollListener();
           }
@@ -1397,6 +1595,53 @@ class VideoPlayerProcessor {
     return document.getElementById(
       "minimized-current-player-" + this.videoData.styleIdentifier
     );
+  }
+
+  getActualVideoElement(playerElement) {
+    if (!playerElement) return null;
+
+    if (playerElement.shadowRoot) {
+      const mediaTheme = playerElement.shadowRoot.querySelector("media-theme");
+      if (mediaTheme) {
+        const muxVideo = mediaTheme.querySelector("mux-video");
+        if (muxVideo && muxVideo.shadowRoot) {
+          const video = muxVideo.shadowRoot.querySelector("video");
+          if (video) return video;
+        }
+      }
+    }
+
+    return playerElement.tagName === "VIDEO" ? playerElement : null;
+  }
+
+  syncPlayerToEnd(targetPlayer, sourcePlayer) {
+    if (!targetPlayer) return;
+
+    let duration = null;
+    const actualVideo = this.getActualVideoElement(sourcePlayer);
+    if (actualVideo && actualVideo.duration && !isNaN(actualVideo.duration)) {
+      duration = actualVideo.duration;
+    } else if (
+      sourcePlayer &&
+      sourcePlayer.duration &&
+      !isNaN(sourcePlayer.duration)
+    ) {
+      duration = sourcePlayer.duration;
+    } else {
+      duration = this.videoData.videoDurationSeconds;
+    }
+
+    if (duration && !isNaN(duration)) {
+      // Set currentTime to duration and pause
+      const targetActualVideo = this.getActualVideoElement(targetPlayer);
+      if (targetActualVideo) {
+        targetActualVideo.currentTime = duration;
+        targetActualVideo.pause();
+      } else {
+        targetPlayer.currentTime = duration;
+        targetPlayer.pause();
+      }
+    }
   }
 
   getVideoWrapperElement(identifier = false) {
